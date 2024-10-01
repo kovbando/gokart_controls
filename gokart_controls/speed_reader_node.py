@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Int32, Float32  # Import Int32 for count topics and Float32 for mps topics
+from std_msgs.msg import Int32, Float32
 import serial
 import threading
 
@@ -18,9 +18,14 @@ class SerialReader(Node):
         baudrate = self.get_parameter('baudrate').get_parameter_value().integer_value
         self.multiplier = self.get_parameter('multiplier').get_parameter_value().double_value
 
-        # Set up the serial connection to your device
-        self.serial_port = serial.Serial(serial_port, baudrate, timeout=None)  # Blocking read with no timeout
-        self.get_logger().info(f"Connected to serial port {serial_port} with baudrate {baudrate}")
+        # Try to set up the serial connection to your device, handle any errors
+        try:
+            self.serial_port = serial.Serial(serial_port, baudrate, timeout=None)  # Blocking read with no timeout
+            self.get_logger().info(f"Connected to serial port {serial_port} with baudrate {baudrate}")
+        except serial.SerialException as e:
+            self.get_logger().error(f"Failed to connect to serial port {serial_port}: {e}")
+            rclpy.shutdown()  # Gracefully shutdown the node if serial port can't be opened
+            return
 
         # Create publishers for the two integer topics (countLeft and countRight)
         self.publisher_left = self.create_publisher(Int32, 'countLeft', 10)
@@ -91,13 +96,14 @@ def main(args=None):
     rclpy.init(args=args)
     node = SerialReader()
     
-    try:
-        rclpy.spin(node)  # Spin the node while the serial thread runs in the background
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+    if rclpy.ok():  # Only spin the node if initialization was successful
+        try:
+            rclpy.spin(node)  # Spin the node while the serial thread runs in the background
+        except KeyboardInterrupt:
+            pass
+        finally:
+            node.destroy_node()
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
